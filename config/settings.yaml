@@ -1,0 +1,222 @@
+# =============================================================
+# GateRiskWatcher 配置
+# 说明：所有阈值/品种/报警映射都在这里改。KEY 不在这里，见 secrets/.env
+# 路径建议用绝对路径或相对本文件。Windows 下路径请用 / 或 \\。
+# =============================================================
+
+# ---- 多账户 ----
+# 系统按 secrets/.env 里实际存在的 KEY 数量决定监控几个账户。
+# accounts 仅用于给每个 key 起一个“显示名”，便于告警区分。
+# 字段名必须是 account_1 / account_2 ... 顺序对应 .env 里的 GATE_API_KEY / GATE_API_KEY_2
+# 如果 .env 有 GATE_API_KEY_2 但 accounts 没写 account_2，则显示名回退为 "account_2"
+accounts:
+  account_1: 主账户
+  account_2: 副账户
+
+# ---- 交易所连接配置（A2 框架雏形，见 src/exchange_config.py）----
+# 交易所适配器从这里读取 host / key 前缀 / 认证方式 / 只读方法白名单 / 启用开关。
+#   - 启用了且有 key 的交易所才会被加载到轮询中（零额外网络行为，仅框架读取配置）。
+#   - 所有交易 key 仍在 secrets/.env；这里只存“怎么连、连哪些接口”。
+#   - 每个交易所的 key/secret 变量名 = <key_prefix>_API_KEY[_N] / <key_prefix>_API_SECRET[_N]
+#   - 交易所新增/停用/换 host 都改这里即可，不碰代码。
+#   - GATE 块必须保留原有主机/方法集，以免影响现有只读哨兵（向下兼容铁律）。
+exchanges:
+  GATE:
+    enabled: true
+    host: "https://api.gateio.ws/api/v4"
+    key_prefix: "GATE"
+    auth_type: "gate"
+    account_name_key: "GATE"
+    priority: 10
+    # 只读方法白名单：与现有 src/gate_client._READONLY_METHODS 保持一致
+    readonly_methods:
+      - list_futures_accounts
+      - list_positions
+      - list_futures_tickers
+      - get_my_trades
+      - list_futures_account_book
+      - list_futures_contracts
+      - list_futures_orders
+    # 交易所特有扩展（当前 Gate 不需要额外参数，仅占位）
+    extra: {}
+
+  OKX:
+    enabled: true   # 启用前在 secrets/.env 填 OKX_API_KEY / OKX_API_SECRET；且需要 OKX_PASSPHRASE
+    host: "https://openapi.okx.com"
+    key_prefix: "OKX"
+    auth_type: "okx"
+    account_name_key: "OKX"
+    priority: 20
+    # OKX V5 私有 REST 只读方法样本（待实测+补齐）
+    readonly_methods:
+      - /api/v5/account/balance
+      - /api/v5/account/positions
+      - /api/v5/account/account-position-risk
+      - /api/v5/account/instruments
+      - /api/v5/public/instruments
+      - /api/v5/public/tickers
+      - /api/v5/public/funding-rate
+      - /api/v5/public/open-interest
+    fallback: "GATE"
+    extra:
+      passphrase_key: "OKX_PASSPHRASE"   # OKX API 需要的第三项认证参数（来自 .env 的 key 名）
+      api_version: "v5"
+      # 文档参考：https://www.okx.com/docs-v5/en  (Account & Positions / Funding / Public data)
+
+  BINANCE:
+    enabled: true   # 启用前在 secrets/.env 填 BINANCE_API_KEY / BINANCE_API_SECRET
+    host: "https://fapi.binance.com"
+    key_prefix: "BINANCE"
+    auth_type: "binance"
+    account_name_key: "BINANCE"
+    priority: 30
+    # Binance USDT-M 永续只读方法样本（待实测+补齐）
+    readonly_methods:
+      - /fapi/v2/account
+      - /fapi/v2/positionRisk
+      - /fapi/v2/ticker/24hr
+      - /fapi/v2/ticker/bookTicker
+      - /fapi/v2/ticker/fundingRate
+      - /fapi/v2/openInterest
+      - /fapi/v2/exchangeInfo
+    fallback: "GATE"
+    extra:
+      recv_window: 5000   # Binance 签名允许的最大请求窗口（毫秒），防止时钟偏移导致签名拒绝
+      api_version: "v2"
+      # 文档参考：https://binance-docs.github.io/apidocs/futures/en/ (USDT-M Futures)
+
+# ---- 轮询间隔（秒）----
+# 行情类（价格/资金费/OI）：可密，15~30s 足够
+poll_market_seconds: 20
+# 账户类（资金/持仓/强平）：涉及强平，略勤，但别低于 5s 以免触发限频
+poll_account_seconds: 10
+# 每日账本（L3 复盘）：按 UTC 日精确生成，与交易所结算口径一致
+# 补齐窗口：开机时自动补「现有账本最后一天→昨天」的所有缺口；
+#   若从未有账本，从 backfill_days 天前补到昨天（覆盖看板全周期，默认 180）。
+# per_run_days：单次运行最多拉几天（防一次性 180 天过载/超时），跨多次运行续补直至追平。
+# 多日关机/新账户接入均自动自愈，无需每天在线。
+daily_ledger_backfill_days: 180
+daily_ledger_backfill_per_run_days: 7
+
+# ---- 持仓定时打印（从本地 data/snapshot.json 提取，不额外调 API）----
+# 每 N 分钟在终端打印一次各账户持仓（交易所 App 风格：合约/方向/杠杆/数量/开仓价/标记价/强平价/未实现盈亏/ADL档位）
+position_print_interval_minutes: 5
+# 持仓打印历史只保留最近 N 次（环形截断写入 logs/positions.log，避免长期驻守导致日志膨胀）
+position_print_keep: 20
+
+# ---- 第1层：保命阈值 ----
+risk:
+  # 强平距离（标记价到强平价的百分比）低于该值 -> critical 报警
+  liq_distance_critical_pct: 2.0
+  # 低于该值 -> warning
+  liq_distance_warning_pct: 5.0
+  # 保证金率（全仓可用权益/权益）低于该值 -> warning
+  margin_ratio_warning_pct: 30.0
+  # 标记价相对指数价偏离超过该百分比 -> warning（插针/操纵前兆）
+  mark_index_deviation_pct: 0.5
+
+# ---- 第2层：资金费提醒 ----
+funding:
+  # 资金费率绝对值异常阈值（比例×100=百分比；0.05=0.05%）。
+  # Gate funding_rate 量纲为比例（0.0001=0.01%）。费率绝对值过高=多空极端拥挤前兆。
+  abnormal_rate_pct: 0.05
+  # 距下次结算剩余秒数低于该值且当前是“付方” -> warning
+  settle_warning_seconds: 1800   # 30 分钟
+  monitoring_whitelist: ['WLD_USDT', 'STRK_USDT', 'BLUR_USDT', 'AEVO_USDT', 'ARB_USDT', 'SUI_USDT', 'NFP_USDT', 'PIXEL_USDT', 'THETA_USDT', 'GALA_USDT', 'DNX_USDT', 'CLORE_USDT', 'RVN_USDT', 'GT_USDT', 'BSV_USDT', 'BNB_USDT', 'FIL_USDT', 'SOL_USDT', 'XRP_USDT', 'HYPE_USDT', 'ADA_USDT', 'OKB_USDT', 'UNI_USDT', 'LTC_USDT', 'PEOPLE_USDT', 'SPCX_USDT', 'XAU_USDT', 'NVDAX_USDT', 'PEPE_USDT', 'NAS100_USDT', 'SPX500_USDT', 'JPN225_USDT', 'KR200_USDT', 'HK50_USDT', 'BCH_USDT', 'TRX_USDT', 'ERG_USDT', 'OP_USDT', 'TRUMPU_USDT', 'WLFI_USDT', 'ORDI_USDT']
+
+# ---- 第3层：OI / 异动 ----
+anomaly:
+  # 未平仓量(OI) 相对上一采样变化超过该百分比 -> warning（踩踏/逼空前兆）
+  oi_change_pct: 8.0
+  # OI×Price 语义信号阈值（见 src/signal_oi.py）：两侧变化都达阈值才触发信号
+  oi_signal_oi_pct: 5.0          # OI 环比变化绝对值 >= 5% 视为「OI 动了」
+  oi_signal_price_pct: 0.3       # 价格环比变化绝对值 >= 0.3% 视为「价格动了」
+  # 插针 / 瞬时爆拉：白名单内币种标记价环比变动 >= 该百分比 -> warning
+  price_spike_pct: 1.5
+  # 大市值动态判定线（OI 张数，1张=1美元面值）：超过该值视为大市值资产。
+  # 大币 20s 环比达 8% 需数千万美元瞬时变动（巨鲸/极端行情级），命中时提示加 ⚠ 并附极端级别说明。
+  # 动态判定，无需手动维护名单，新上线的大币也能自适应。
+  big_oi_threshold: 100000000
+  # 大市值资产 20s 瞬时环比阈值（降到 1.5%，让大币瞬时异动也能弹；小币仍用 oi_change_pct=8%）
+  big_oi_warn_pct: 1.5
+  # 趋势层：本地 OI 基线窗口（分钟）+ 累计变化阈值（大币小币同阈值，抓急涨急跌不抓慢牛）
+  # 例：60 分钟窗口 + 30% → 1 小时内 OI 累计变化超 30% 弹「OI 趋势异动」
+  oi_trend_window_minutes: 60
+  oi_trend_pct: 30.0
+
+# ---- 报警：级别 -> MP3 文件（放在 sounds/ 下，你自己生成）----
+# 缺失文件时该级别不发声，只弹窗+写日志。
+alert_sounds:
+  critical: sounds/critical.mp3
+  warning: sounds/warning.mp3
+  info: sounds/info.mp3
+  # 大币专属音效（你生成 mp3 放入 sounds/ 即可，缺失则只弹窗不发声）：
+  big_oi: sounds/big_oi.mp3              # 大币瞬时异动(20s环比>1.5%)
+  big_oi_trend: sounds/big_oi_trend.mp3  # 大币趋势异动(60min累计>30%)
+
+# ---- 报警方式 ----
+alert:
+  popup: true            # 系统通知（Windows 11 操作中心 toast，常驻右下角可关闭；非 Windows 自动回退 tkinter 弹窗）
+  sound: true            # 播 MP3
+  log: true              # 写 logs/alerts.log
+  # 同一告警的“抑制期”（秒）：避免 20s 轮询反复响铃。critical 不受抑制定制
+  suppress_seconds: 300
+
+# ---- 语音念报（三层音频系统：Layer1 静态MP3 + Layer2 Edge-TTS + Layer3 pyttsx3 兜底）----
+# 默认 enabled: false（保持原行为——只响铃+弹窗+日志）。想听"动态文本念报"再开。
+# 设计：Layer2 云端神经语音需联网；若断网/超时/被墙，自动无缝回退 Layer3 本地 SAPI5，绝不静默。
+tts:
+  enabled: true                 # 总开关。true=让告警把标题+正文念出来
+  # 哪些级别念报（默认三级都念）。可缩成 ['critical'] 只念保命级
+  layers: ["critical", "warning", "info"]
+  # Layer 2 云端 Edge-TTS（微软神经语音，需联网）。优先使用；断网/超时(见下)自动回退 Layer3 本地。
+  # voice 可选中文神经嗓（按“文本语言”选，不是按系统区域选——告警文案是中文，故保持 zh-CN）：
+  #   zh-CN-XiaoxiaoNeural  (默认，女声，自然)   ← 推荐保持
+  #   zh-CN-HuihuiNeural    (女声，另一音色，纯听感偏好，无功能差异)
+  #   zh-CN-YunxiNeural     (男声)
+  #   en-US-GuyNeural / ja-JP-NanamiNeural 等（仅当你把告警文案改成对应语言时才用）
+  voice: "zh-CN-XiaoxiaoNeural"
+  rate: "+0%"                    # 语速：-50% ~ +50%
+  timeout_seconds: 5.0           # 合成超时（秒），到点立刻回退 Layer3，避免阻塞告警
+  # Layer 3 本地兜底（Windows SAPI5，无需联网，零依赖外部服务）
+  fallback_pyttsx3: true         # true=Layer2 失败时自动用本地引擎念（推荐）
+  pyttsx3_rate: 200              # 本地引擎语速（字/分钟，默认200，范围约 100-300）
+  # ── 跨系统说明（英文/日文 Windows）──
+  # 告警文案（risk.py/watch.py）写死为中文，不随系统语言切换——保持操作员母语。
+  #   Layer2 edge-tts：云端合成，与 OS 区域无关，中文系统/英文系统都正常念中文。
+  #   Layer3 pyttsx3：依赖本机 SAPI 语音。非中文 Windows 若没装“中文语音”语言包，
+  #     本地会退化成英文嗓念中文（糊）。缓解：在该系统装中文 TTS 语言包；或接受 L3 降级
+  #     （L1 响铃 + toast + 日志仍完整，信息不丢）。
+  # ── Layer1 静态 MP3 与语音/弹窗的关系 ──
+  # L1 静态 MP3 与 L2/L3 语音共用同一 FIFO 队列，二者“串行不互相打断”；
+  # 但 MP3 按自身时长独立播到结束，不与语音/弹窗对齐收尾（设计如此：背景铃响一次到完即可）。
+  # MP3 长只让排在其后的语音在队列里多等，toast 仍在 fire() 瞬间弹出，不影响新告警即时可见。
+
+# ---- 输出详细度 ----
+# 每次拉满账户数据：资金、保证金、逐仓/全仓、每个仓位全部字段都落 data/snapshot.json
+dump_full_snapshot: true
+
+# ---- 离机推送（邮件 / Telegram 预留）----
+# 凭据在 secrets/push.env（与交易 key 的 secrets/.env 同目录但不同文件，互不读取）。
+# 不填 push.env 则推送自动禁用，不影响本地 toast/声音/日志。
+notify:
+  # 邮件全局冷却（秒）：任意一封邮件发出后该时间内不再发，挡住强平洪泛
+  email_cooldown_seconds: 60
+  # critical 每接收者冷却（秒）：保命告警即时发，但同一接收者 5 分钟内只投一次
+  critical_cooldown_seconds: 300
+  # warning/info 摘要合并周期（分钟）：每 N 分钟把非 critical 告警合并成一封邮件，
+  # 避免脉冲类告警（OI 异动/费率提醒）每条一封变成垃圾邮件
+  digest_minutes: 15
+  # 邮件连接：SSL(465) 或 STARTTLS(587/25)。use_tls=1 时走加密；host/port/user/pass 在 push.env
+  # push.env 字段：EMAIL_SMTP_HOST / EMAIL_SMTP_PORT / EMAIL_SMTP_USER / EMAIL_SMTP_PASS
+  #                EMAIL_FROM / EMAIL_TO(逗号分隔) / EMAIL_USE_TLS(0|1)
+  # Telegram 预留（未来启用填这两项即可，无需改代码）：TG_BOT_TOKEN / TG_CHAT_ID
+
+# ---- 中文语义字段映射（仅用于 OI×Price 信号展示，方便阅读 / 写入消息）----
+signal_labels:
+  deleveraging: 去杠杆
+  short_squeeze: 空头踩踏
+  inflow: 资金流入
+  pressure: 资金压制
+  neutral: 中性
+

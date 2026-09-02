@@ -1,0 +1,25 @@
+# 密钥与敏感数据（绝不入库）
+secrets/
+*.env
+*.env.*
+!.env.example
+
+# 运行时数据与日志（按需保留本地，不入库）
+data/
+logs/
+sounds/
+*.mp3
+*.wav
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

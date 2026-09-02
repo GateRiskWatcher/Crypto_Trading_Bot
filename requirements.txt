@@ -1,0 +1,6 @@
+gate-api>=7.2
+pygame>=2.6
+pyyaml>=6.0
+win11toast>=0.36
+edge-tts>=7.2          # Layer 2 语音念报（云端神经语音，需联网）
+pyttsx3>=2.9           # Layer 3 本地兜底（Windows SAPI5，无需联网）
