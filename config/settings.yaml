@@ -120,8 +120,10 @@ funding:
   # 资金费率绝对值异常阈值（比例×100=百分比；0.05=0.05%）。
   # Gate funding_rate 量纲为比例（0.0001=0.01%）。费率绝对值过高=多空极端拥挤前兆。
   abnormal_rate_pct: 0.05
-  # 距下次结算剩余秒数低于该值且当前是“付方” -> warning
+  # 距下次结算剩余秒数低于该值且当前是"付方" -> warning
   settle_warning_seconds: 1800   # 30 分钟
+  # 即使不持仓也希望监控的币种（留空 = 只对有持仓的币告警）
+  # 示例格式：monitoring_whitelist: ['BTC_USDT', 'ETH_USDT']
   monitoring_whitelist: []
 
 # ---- 第3层：OI / 异动 ----
