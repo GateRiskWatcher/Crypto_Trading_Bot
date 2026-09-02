@@ -122,7 +122,7 @@ funding:
   abnormal_rate_pct: 0.05
   # 距下次结算剩余秒数低于该值且当前是“付方” -> warning
   settle_warning_seconds: 1800   # 30 分钟
-  monitoring_whitelist: ['WLD_USDT', 'STRK_USDT', 'BLUR_USDT', 'AEVO_USDT', 'ARB_USDT', 'SUI_USDT', 'NFP_USDT', 'PIXEL_USDT', 'THETA_USDT', 'GALA_USDT', 'DNX_USDT', 'CLORE_USDT', 'RVN_USDT', 'GT_USDT', 'BSV_USDT', 'BNB_USDT', 'FIL_USDT', 'SOL_USDT', 'XRP_USDT', 'HYPE_USDT', 'ADA_USDT', 'OKB_USDT', 'UNI_USDT', 'LTC_USDT', 'PEOPLE_USDT', 'SPCX_USDT', 'XAU_USDT', 'NVDAX_USDT', 'PEPE_USDT', 'NAS100_USDT', 'SPX500_USDT', 'JPN225_USDT', 'KR200_USDT', 'HK50_USDT', 'BCH_USDT', 'TRX_USDT', 'ERG_USDT', 'OP_USDT', 'TRUMPU_USDT', 'WLFI_USDT', 'ORDI_USDT']
+  monitoring_whitelist: []
 
 # ---- 第3层：OI / 异动 ----
 anomaly:
