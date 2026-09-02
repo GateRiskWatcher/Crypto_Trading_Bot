@@ -35,7 +35,7 @@ Crypto_Trading_Bot/
 ├── 项目大纲.txt                # 项目规划/功能大纲
 ├── requirements.txt
 └── .gitignore
-# GateRiskWatcher — Gate.io 永续合约只读风险哨兵 （第一代）
+# GateRiskWatcher —  永续合约只读风险哨兵 （第一代）
 
 > 只用**只读** API key，物理上不可能下单。报警/弹窗/铃音全部自己生成。
 
