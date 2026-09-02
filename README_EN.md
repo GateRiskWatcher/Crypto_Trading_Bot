@@ -1,4 +1,4 @@
-# GateRiskWatcher — Gate.io USDT Perpetuals Read-Only Risk Sentinel
+# GateRiskWatcher —  Read-Only Risk Sentinel
 
 > Uses **read-only** API keys only; placing/closing/adjusting orders is physically impossible.
 > All alerts, toasts, and sounds are generated locally.
